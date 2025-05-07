@@ -7,6 +7,7 @@ use embassy_nrf::{
     gpio::{AnyPin, Level, Output, OutputDrive, Pin},
     peripherals,
     twim::{self, Twim},
+    uarte,
 };
 use embassy_time::Timer;
 use pwm_pca9685::{Address, Channel, Pca9685};
@@ -14,37 +15,65 @@ use pwm_pca9685::{Address, Channel, Pca9685};
 use panic_probe as _;
 
 bind_interrupts!(struct Irqs {
+    UARTE0_UART0 => uarte::InterruptHandler<peripherals::UARTE0>;
     SPIM0_SPIS0_TWIM0_TWIS0_SPI0_TWI0  => twim::InterruptHandler<peripherals::TWISPI0>;
 });
 
 #[embassy_executor::main]
 async fn main(_spawner: Spawner) {
- 
     let p = embassy_nrf::init(Default::default());
 
-
+    // LED init
     let _row1 = led_pin(p.P0_21.degrade());
     let mut _col1 = led_pin(p.P0_28.degrade());
     let mut _col2 = led_pin(p.P0_11.degrade());
     let mut _col3 = led_pin(p.P0_31.degrade());
-    
-    let address = Address::default();
- 
-    let config = twim::Config::default();
 
-    let dev = Twim::new(p.TWISPI0, Irqs, p.P1_00.degrade(), p.P0_26.degrade(), config);
+    // PCA9685 init
 
-    let mut pwm =  Pca9685::new(dev, address).unwrap();
+    let pca9685_address = Address::default();
 
-    _col1.set_low();
+    let twim_config = twim::Config::default();
 
-    _col2.set_low();
+    let twim_device = Twim::new(
+        p.TWISPI0,
+        Irqs,
+        p.P1_00.degrade(),
+        p.P0_26.degrade(),
+        twim_config,
+    );
+
+    let mut pwm = Pca9685::new(twim_device, pca9685_address).unwrap();
 
     pwm.set_prescale(100).unwrap();
-     
-    _col3.set_low();
 
     pwm.enable().unwrap();
+
+    // UART init
+
+    let mut uart_config = uarte::Config::default();
+
+    uart_config.parity = uarte::Parity::EXCLUDED;
+    uart_config.baudrate = uarte::Baudrate::BAUD9600;
+
+    let mut uart = uarte::Uarte::new(
+        p.UARTE0,
+        Irqs,
+        p.P1_08.degrade(),
+        p.P0_06.degrade(),
+        uart_config,
+    );
+
+    let mut buf = [0;8];
+    buf.copy_from_slice(b"Hello!\r\n");
+
+    // LED turn on
+
+    // _col1.set_low();
+
+    
+
+    // SERVOS RUN
 
     pwm.set_channel_on(Channel::All, 0).unwrap();
 
@@ -58,13 +87,15 @@ async fn main(_spawner: Spawner) {
 
         if current >= servo_max {
             factor = -5;
-        }
-        else if current < servo_min {
+        } else if current < servo_min {
             factor = 5;
         }
         current = (current as i16 + factor) as u16;
+
+        Timer::after_millis(50).await;
+
+        uart.write(&buf).await.unwrap(); 
         
-        Timer::after_millis(5).await; 
     }
 }
 
