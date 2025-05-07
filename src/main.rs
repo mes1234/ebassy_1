@@ -10,7 +10,6 @@ use embassy_nrf::{
 };
 use embassy_time::Timer;
 use pwm_pca9685::{Address, Channel, Pca9685};
-use defmt;
 
 use panic_probe as _;
 
@@ -20,6 +19,7 @@ bind_interrupts!(struct Irqs {
 
 #[embassy_executor::main]
 async fn main(_spawner: Spawner) {
+ 
     let p = embassy_nrf::init(Default::default());
 
 
@@ -29,33 +29,42 @@ async fn main(_spawner: Spawner) {
     let mut _col3 = led_pin(p.P0_31.degrade());
     
     let address = Address::default();
-
-    defmt::info!("Yello");
-
+ 
     let config = twim::Config::default();
 
-    let dev = Twim::new(p.TWISPI0, Irqs, p.P0_20.degrade(), p.P0_19.degrade(), config);
+    let dev = Twim::new(p.TWISPI0, Irqs, p.P1_00.degrade(), p.P0_26.degrade(), config);
 
     let mut pwm =  Pca9685::new(dev, address).unwrap();
 
     _col1.set_low();
-  
-    match pwm.disable() {
-        Ok(_) => defmt::info!("PWM disabled"),
-        Err(e) => defmt::info!("Failed to disable PWM: {:?}", e),
-    }
 
     _col2.set_low();
 
-    pwm.set_prescale(121).unwrap();
+    pwm.set_prescale(100).unwrap();
      
     _col3.set_low();
 
     pwm.enable().unwrap();
 
+    pwm.set_channel_on(Channel::All, 0).unwrap();
+
+    let servo_min = 130; // minimum pulse length (out of 4096)
+    let servo_max = 610; // maximum pulse length (out of 4096)
+    let mut current = servo_min;
+    let mut factor: i16 = 1;
+
     loop {
-        pwm.set_channel_on_off(Channel::C15, 0, 2047).unwrap();
-        Timer::after_millis(1000).await; 
+        pwm.set_channel_off(Channel::C15, current).unwrap();
+
+        if current >= servo_max {
+            factor = -5;
+        }
+        else if current < servo_min {
+            factor = 5;
+        }
+        current = (current as i16 + factor) as u16;
+        
+        Timer::after_millis(5).await; 
     }
 }
 
