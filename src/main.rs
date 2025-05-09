@@ -7,12 +7,17 @@ use embassy_nrf::{
     gpio::{AnyPin, Level, Output, OutputDrive, Pin},
     peripherals,
     twim::{self, Twim},
-    uarte,
+    uarte::{self, UarteRx},
 };
+use embassy_sync::blocking_mutex::raw::ThreadModeRawMutex;
+use embassy_sync::pubsub;
 use embassy_time::Timer;
 use pwm_pca9685::{Address, Channel, Pca9685};
 
 use panic_probe as _;
+
+static SHARED_CURRENT: pubsub::PubSubChannel<ThreadModeRawMutex, u16, 2, 2, 2> =
+    pubsub::PubSubChannel::new();
 
 bind_interrupts!(struct Irqs {
     UARTE0_UART0 => uarte::InterruptHandler<peripherals::UARTE0>;
@@ -20,7 +25,7 @@ bind_interrupts!(struct Irqs {
 });
 
 #[embassy_executor::main]
-async fn main(_spawner: Spawner) {
+async fn main(spawner: Spawner) {
     let p = embassy_nrf::init(Default::default());
 
     // LED init
@@ -56,7 +61,7 @@ async fn main(_spawner: Spawner) {
     uart_config.parity = uarte::Parity::EXCLUDED;
     uart_config.baudrate = uarte::Baudrate::BAUD9600;
 
-    let mut uart = uarte::Uarte::new(
+    let uart = uarte::Uarte::new(
         p.UARTE0,
         Irqs,
         p.P1_08.degrade(),
@@ -64,41 +69,97 @@ async fn main(_spawner: Spawner) {
         uart_config,
     );
 
-    let mut buf = [0;8];
-    buf.copy_from_slice(b"Hello!\r\n");
+    let (mut tx, rx) = uart.split();
+
+    spawner.spawn(reader(rx)).unwrap();
+    spawner.spawn(dummy()).unwrap();
+
+    let mut buf = [0; 23];
+    buf.copy_from_slice(b"Type 8 chars to echo!\r\n");
+    tx.write(&buf).await.unwrap();
 
     // LED turn on
 
     // _col1.set_low();
-
-    
+    // _col2.set_low();
+    // _col3.set_low();
 
     // SERVOS RUN
 
     pwm.set_channel_on(Channel::All, 0).unwrap();
 
-    let servo_min = 130; // minimum pulse length (out of 4096)
-    let servo_max = 610; // maximum pulse length (out of 4096)
-    let mut current = servo_min;
-    let mut factor: i16 = 1;
+    let mut pwm_value : f32 = 300.0;
+
+    let mut sub = SHARED_CURRENT.subscriber().unwrap();
 
     loop {
-        pwm.set_channel_off(Channel::C15, current).unwrap();
+        let val_for_pwm = sub.next_message_pure().await as f32;
 
-        if current >= servo_max {
-            factor = -5;
-        } else if current < servo_min {
-            factor = 5;
+        while (val_for_pwm - pwm_value).abs() > 1.0 {
+            _col1.set_low();
+            pwm_value = smooth(pwm_value, val_for_pwm);
+            pwm.set_channel_off(Channel::C15, pwm_value as u16).unwrap();
+            pwm.set_channel_off(Channel::C14, pwm_value as u16).unwrap();
+
+            Timer::after_millis(5).await;
         }
-        current = (current as i16 + factor) as u16;
-
-        Timer::after_millis(50).await;
-
-        uart.write(&buf).await.unwrap(); 
-        
+        _col1.set_high();
     }
 }
 
 fn led_pin(pin: AnyPin) -> Output<'static> {
     Output::new(pin, Level::High, OutputDrive::Standard)
+}
+
+fn smooth(current: f32, target: f32) -> f32 {
+    let current_f = current as f32;
+    let target_f = target as f32;
+
+    let factor: f32 = 0.07;
+    let result_f = ((1.0 - factor) * current_f) + (factor * target_f);
+
+    result_f
+}
+
+#[embassy_executor::task]
+async fn dummy() {
+    let values = [250u16, 300u16, 400u16, 300u16];
+     loop {
+        for &value_to_publish in values.iter() {
+            {
+                let pub1 = SHARED_CURRENT.publisher().unwrap();
+                pub1.publish_immediate(value_to_publish);
+            }
+            Timer::after_millis(500).await; // Add a delay, e.g., 1 second
+        } 
+     }
+}
+
+#[embassy_executor::task]
+async fn reader(mut rx: UarteRx<'static, peripherals::UARTE0>) {
+    let mut buf = [0; 3];
+    loop {
+        rx.read(&mut buf).await.unwrap();
+
+        let parsed_value = parse_byte_slice_to_u16(&buf).unwrap();
+
+        {
+            let pub1 = SHARED_CURRENT.publisher().unwrap();
+            pub1.publish_immediate(parsed_value);
+        }
+    }
+}
+
+fn parse_byte_slice_to_u16(buf: &[u8]) -> Result<u16, &'static str> {
+    // 1. Convert byte slice to &str
+    core::str::from_utf8(buf)
+        .map_err(|_| "Invalid UTF-8 sequence")
+        .and_then(|s| {
+            // 2. Trim whitespace
+            let trimmed_s = s.trim();
+            // 3. Parse to u16
+            trimmed_s
+                .parse::<u16>()
+                .map_err(|_| "Failed to parse string to u16")
+        })
 }
