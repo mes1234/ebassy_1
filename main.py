@@ -49,20 +49,31 @@ class CBOR_UART_Communicator:
 
 # Example usage
 if __name__ == "__main__":
-    comm = CBOR_UART_Communicator('/dev/ttyACM0', 9600)
+    comm = CBOR_UART_Communicator('/dev/ttyACM0', 38400)
     
-    value = 220
-    factor = 60
+    value = 300
+    factor = 20
     while True:  
         value = value  + factor
         # Send a dictionary
         comm.send({ 
-            "position": value, 
+            "position_c0": value, 
+            "position_c1": value+1, 
+            "position_c2": value+2, 
+            "position_c3": value+3, 
+            "position_c4": value+4, 
+            "position_c5": value+5, 
+            "position_c6": value+6, 
+            "position_c7": value+7, 
+            "position_c8": value+8, 
+            "position_c9": value+9, 
+            "position_c10": value+10, 
+            "position_c11": value+11, 
         }) 
 
-        if (value > 500):
+        if (value > 400):
             factor = -1*factor
         if (value < 250):
             factor = -1*factor
         print(f"Sent value: {value}")
-        time.sleep(0.25)
+        time.sleep(0.05)

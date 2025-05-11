@@ -24,11 +24,23 @@ use panic_probe as _;
 
 #[derive(Debug, Deserialize)]
 struct SensorData {
-    position: u16,
+    position_c0: u16,
+    position_c1: u16,
+    position_c2: u16,
+    position_c3: u16,
+    position_c4: u16,
+    position_c5: u16,
+    position_c6: u16,
+    position_c7: u16,
+    position_c8: u16,
+    position_c9: u16,
+    position_c10: u16,
+    position_c11: u16,
 }
 
-static SHARED_CURRENT: pubsub::PubSubChannel<ThreadModeRawMutex, u16, 2, 2, 2> =
-    pubsub::PubSubChannel::new();
+static SHARED_CURRENT_C0: pubsub::PubSubChannel<ThreadModeRawMutex, u16, 10, 1, 1> =    pubsub::PubSubChannel::new();
+static SHARED_CURRENT_C1: pubsub::PubSubChannel<ThreadModeRawMutex, u16, 10, 1, 1> =    pubsub::PubSubChannel::new();
+static SHARED_CURRENT_C2: pubsub::PubSubChannel<ThreadModeRawMutex, u16, 10, 1, 1> =    pubsub::PubSubChannel::new();
 
 bind_interrupts!(struct Irqs {
     UARTE0_UART0 => uarte::InterruptHandler<peripherals::UARTE0>;
@@ -70,7 +82,7 @@ async fn main(spawner: Spawner) {
     let mut uart_config = uarte::Config::default();
 
     uart_config.parity = uarte::Parity::EXCLUDED;
-    uart_config.baudrate = uarte::Baudrate::BAUD9600;
+    uart_config.baudrate = uarte::Baudrate::BAUD38400;
 
     let uart = uarte::Uarte::new(
         p.UARTE0,
@@ -82,12 +94,7 @@ async fn main(spawner: Spawner) {
 
     let (mut tx, rx) = uart.split();
 
-    spawner.spawn(reader(rx)).unwrap();
-    // spawner.spawn(dummy()).unwrap();
-
-    let mut buf = [0; 23];
-    buf.copy_from_slice(b"Type 8 chars to echo!\r\n");
-    tx.write(&buf).await.unwrap();
+    spawner.spawn(reader(rx)).unwrap();  
 
     // LED turn on
 
@@ -101,7 +108,7 @@ async fn main(spawner: Spawner) {
 
     let mut pwm_value: f32 = 300.0;
 
-    let mut sub = SHARED_CURRENT.subscriber().unwrap();
+    let mut sub = SHARED_CURRENT_C0.subscriber().unwrap();
 
     loop {
         let val_for_pwm = sub.next_message_pure().await as f32;
@@ -130,21 +137,7 @@ fn smooth(current: f32, target: f32) -> f32 {
     let result_f = ((1.0 - factor) * current_f) + (factor * target_f);
 
     result_f
-}
-
-#[embassy_executor::task]
-async fn dummy() {
-    let values = [250u16, 300u16, 400u16, 300u16];
-    loop {
-        for &value_to_publish in values.iter() {
-            {
-                let pub1 = SHARED_CURRENT.publisher().unwrap();
-                pub1.publish_immediate(value_to_publish);
-            }
-            Timer::after_millis(500).await; // Add a delay, e.g., 1 second
-        }
-    }
-}
+} 
 
 #[embassy_executor::task]
 async fn reader(mut rx: UarteRx<'static, peripherals::UARTE0>) {
@@ -168,12 +161,10 @@ async fn reader(mut rx: UarteRx<'static, peripherals::UARTE0>) {
 
                                 frame_buf.clear();
 
-                                let pub1 = SHARED_CURRENT.publisher().unwrap();
-                                pub1.publish_immediate(data.position);
+                                let pub1 = SHARED_CURRENT_C0.publisher().unwrap();
+                                pub1.publish_immediate(data.position_c0);
                             }
-                            Err(_cbor_err) => {
-                                let pub1 = SHARED_CURRENT.publisher().unwrap();
-                                pub1.publish_immediate(222);
+                            Err(_cbor_err) => { 
                             }
                         }
                     }
