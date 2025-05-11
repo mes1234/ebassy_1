@@ -52,7 +52,7 @@ if __name__ == "__main__":
     comm = CBOR_UART_Communicator('/dev/ttyACM0', 38400)
     
     value = 300
-    factor = 20
+    factor = 40
     while True:  
         value = value  + factor
         # Send a dictionary
@@ -76,4 +76,4 @@ if __name__ == "__main__":
         if (value < 250):
             factor = -1*factor
         print(f"Sent value: {value}")
-        time.sleep(0.05)
+        time.sleep(0.5)

@@ -22,7 +22,7 @@ use serde_cbor::de::from_mut_slice;
 
 use panic_probe as _;
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize,Clone)]
 struct SensorData {
     position_c0: u16,
     position_c1: u16,
@@ -39,7 +39,7 @@ struct SensorData {
 }
 
 static SHARED_CURRENT_C0: pubsub::PubSubChannel<ThreadModeRawMutex, u16, 10, 1, 1> =    pubsub::PubSubChannel::new();
-static SHARED_CURRENT_C1: pubsub::PubSubChannel<ThreadModeRawMutex, u16, 10, 1, 1> =    pubsub::PubSubChannel::new();
+static SHARED_CURRENT_C1: pubsub::PubSubChannel<ThreadModeRawMutex, SensorData, 10, 1, 1> =    pubsub::PubSubChannel::new();
 static SHARED_CURRENT_C2: pubsub::PubSubChannel<ThreadModeRawMutex, u16, 10, 1, 1> =    pubsub::PubSubChannel::new();
 
 bind_interrupts!(struct Irqs {
@@ -119,7 +119,7 @@ async fn main(spawner: Spawner) {
             pwm.set_channel_off(Channel::C15, pwm_value as u16).unwrap();
             pwm.set_channel_off(Channel::C14, pwm_value as u16).unwrap();
 
-            Timer::after_millis(5).await;
+            Timer::after_millis(10).await;
         }
         _col1.set_high();
     }
@@ -133,7 +133,7 @@ fn smooth(current: f32, target: f32) -> f32 {
     let current_f = current as f32;
     let target_f = target as f32;
 
-    let factor: f32 = 0.07;
+    let factor: f32 = 0.05;
     let result_f = ((1.0 - factor) * current_f) + (factor * target_f);
 
     result_f
