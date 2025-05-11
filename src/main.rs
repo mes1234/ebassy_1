@@ -14,7 +14,18 @@ use embassy_sync::pubsub;
 use embassy_time::Timer;
 use pwm_pca9685::{Address, Channel, Pca9685};
 
+use cobs::decode_in_place;
+use heapless::Vec;
+
+use serde::Deserialize;
+use serde_cbor::de::from_mut_slice;
+
 use panic_probe as _;
+
+#[derive(Debug, Deserialize)]
+struct SensorData {
+    position: u16,
+}
 
 static SHARED_CURRENT: pubsub::PubSubChannel<ThreadModeRawMutex, u16, 2, 2, 2> =
     pubsub::PubSubChannel::new();
@@ -72,7 +83,7 @@ async fn main(spawner: Spawner) {
     let (mut tx, rx) = uart.split();
 
     spawner.spawn(reader(rx)).unwrap();
-    spawner.spawn(dummy()).unwrap();
+    // spawner.spawn(dummy()).unwrap();
 
     let mut buf = [0; 23];
     buf.copy_from_slice(b"Type 8 chars to echo!\r\n");
@@ -88,7 +99,7 @@ async fn main(spawner: Spawner) {
 
     pwm.set_channel_on(Channel::All, 0).unwrap();
 
-    let mut pwm_value : f32 = 300.0;
+    let mut pwm_value: f32 = 300.0;
 
     let mut sub = SHARED_CURRENT.subscriber().unwrap();
 
@@ -124,42 +135,57 @@ fn smooth(current: f32, target: f32) -> f32 {
 #[embassy_executor::task]
 async fn dummy() {
     let values = [250u16, 300u16, 400u16, 300u16];
-     loop {
+    loop {
         for &value_to_publish in values.iter() {
             {
                 let pub1 = SHARED_CURRENT.publisher().unwrap();
                 pub1.publish_immediate(value_to_publish);
             }
             Timer::after_millis(500).await; // Add a delay, e.g., 1 second
-        } 
-     }
-}
-
-#[embassy_executor::task]
-async fn reader(mut rx: UarteRx<'static, peripherals::UARTE0>) {
-    let mut buf = [0; 3];
-    loop {
-        rx.read(&mut buf).await.unwrap();
-
-        let parsed_value = parse_byte_slice_to_u16(&buf).unwrap();
-
-        {
-            let pub1 = SHARED_CURRENT.publisher().unwrap();
-            pub1.publish_immediate(parsed_value);
         }
     }
 }
 
-fn parse_byte_slice_to_u16(buf: &[u8]) -> Result<u16, &'static str> {
-    // 1. Convert byte slice to &str
-    core::str::from_utf8(buf)
-        .map_err(|_| "Invalid UTF-8 sequence")
-        .and_then(|s| {
-            // 2. Trim whitespace
-            let trimmed_s = s.trim();
-            // 3. Parse to u16
-            trimmed_s
-                .parse::<u16>()
-                .map_err(|_| "Failed to parse string to u16")
-        })
+#[embassy_executor::task]
+async fn reader(mut rx: UarteRx<'static, peripherals::UARTE0>) {
+    let mut frame_buf = Vec::<u8, 256>::new();
+    let mut decode_buf = [0u8; 256];
+
+    loop {
+        let mut byte = [0u8; 1];
+
+        match rx.read(&mut byte).await {
+            Ok(_) => {
+                if byte[0] == 0x00 {
+                    {
+                        decode_buf[..frame_buf.len()].copy_from_slice(&frame_buf);
+
+                        match decode_in_place(&mut decode_buf[..frame_buf.len()]) {
+                            Ok(decoded_len) => {
+                                let data =
+                                    from_mut_slice::<SensorData>(&mut decode_buf[..decoded_len])
+                                        .unwrap();
+
+                                frame_buf.clear();
+
+                                let pub1 = SHARED_CURRENT.publisher().unwrap();
+                                pub1.publish_immediate(data.position);
+                            }
+                            Err(_cbor_err) => {
+                                let pub1 = SHARED_CURRENT.publisher().unwrap();
+                                pub1.publish_immediate(222);
+                            }
+                        }
+                    }
+                } else {
+                    if frame_buf.push(byte[0]).is_err() {
+                        frame_buf.clear();
+                    }
+                }
+            }
+            Err(_e) => {
+                frame_buf.clear();
+            }
+        }
+    }
 }
