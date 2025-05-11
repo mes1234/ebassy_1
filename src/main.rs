@@ -22,7 +22,13 @@ use serde_cbor::de::from_mut_slice;
 
 use panic_probe as _;
 
-#[derive(Debug, Deserialize,Clone)]
+#[derive(Debug, Deserialize, Clone)]
+enum IncomingMessage {
+    Sensor(SensorData),
+    Config(Config),
+}
+
+#[derive(Debug, Deserialize, Clone)]
 struct SensorData {
     position_c0: u16,
     position_c1: u16,
@@ -38,9 +44,17 @@ struct SensorData {
     position_c11: u16,
 }
 
-static SHARED_CURRENT_C0: pubsub::PubSubChannel<ThreadModeRawMutex, u16, 10, 1, 1> =    pubsub::PubSubChannel::new();
-static SHARED_CURRENT_C1: pubsub::PubSubChannel<ThreadModeRawMutex, SensorData, 10, 1, 1> =    pubsub::PubSubChannel::new();
-static SHARED_CURRENT_C2: pubsub::PubSubChannel<ThreadModeRawMutex, u16, 10, 1, 1> =    pubsub::PubSubChannel::new();
+#[derive(Debug, Deserialize, Clone)]
+struct Config {
+    position_speed: u16,
+}
+
+static SHARED_CURRENT_C0: pubsub::PubSubChannel<ThreadModeRawMutex, u16, 10, 1, 1> =
+    pubsub::PubSubChannel::new();
+static SHARED_CURRENT_C1: pubsub::PubSubChannel<ThreadModeRawMutex, SensorData, 10, 1, 1> =
+    pubsub::PubSubChannel::new();
+static SHARED_CURRENT_C2: pubsub::PubSubChannel<ThreadModeRawMutex, u16, 10, 1, 1> =
+    pubsub::PubSubChannel::new();
 
 bind_interrupts!(struct Irqs {
     UARTE0_UART0 => uarte::InterruptHandler<peripherals::UARTE0>;
@@ -94,7 +108,7 @@ async fn main(spawner: Spawner) {
 
     let (mut tx, rx) = uart.split();
 
-    spawner.spawn(reader(rx)).unwrap();  
+    spawner.spawn(reader(rx)).unwrap();
 
     // LED turn on
 
@@ -137,7 +151,7 @@ fn smooth(current: f32, target: f32) -> f32 {
     let result_f = ((1.0 - factor) * current_f) + (factor * target_f);
 
     result_f
-} 
+}
 
 #[embassy_executor::task]
 async fn reader(mut rx: UarteRx<'static, peripherals::UARTE0>) {
@@ -155,17 +169,21 @@ async fn reader(mut rx: UarteRx<'static, peripherals::UARTE0>) {
 
                         match decode_in_place(&mut decode_buf[..frame_buf.len()]) {
                             Ok(decoded_len) => {
-                                let data =
-                                    from_mut_slice::<SensorData>(&mut decode_buf[..decoded_len])
+                                let incomming =
+                                    from_mut_slice::<IncomingMessage>(&mut decode_buf[..decoded_len])
                                         .unwrap();
 
-                                frame_buf.clear();
+                                match incomming {
+                                     IncomingMessage::Sensor(data) => {
+                                        let pub1 = SHARED_CURRENT_C0.publisher().unwrap();
+                                        pub1.publish_immediate(data.position_c0);
+                                    }
+                                     IncomingMessage::Config(config) => {}
+                                }
 
-                                let pub1 = SHARED_CURRENT_C0.publisher().unwrap();
-                                pub1.publish_immediate(data.position_c0);
+                                frame_buf.clear();
                             }
-                            Err(_cbor_err) => { 
-                            }
+                            Err(_cbor_err) => {}
                         }
                     }
                 } else {

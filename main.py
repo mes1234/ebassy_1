@@ -8,8 +8,10 @@ class CBOR_UART_Communicator:
         self.ser = serial.Serial(port, baudrate, timeout=1)
         
     def send(self, data):
+
+        data_to_send = {"Sensor": data}
         # Serialize to CBOR
-        cbor_data = cbor2.dumps(data)
+        cbor_data = cbor2.dumps(data_to_send)
         
         # Encode with COBS
         cobs_data = cobs.encode(cbor_data)
