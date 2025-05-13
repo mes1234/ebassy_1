@@ -9,7 +9,7 @@ use embassy_nrf::{
     twim::{self, Twim},
     uarte::{self, UarteRx},
 };
-use embassy_sync::pubsub;
+use embassy_sync::pubsub::{self, PubSubChannel, Publisher};
 use embassy_sync::{blocking_mutex::raw::ThreadModeRawMutex, pubsub::Subscriber};
 use embassy_time::Timer;
 use pwm_pca9685::{Address, Channel, Pca9685};
@@ -17,7 +17,9 @@ use pwm_pca9685::{Address, Channel, Pca9685};
 use cobs::decode_in_place;
 use heapless::Vec;
 
-use rtt_target::{debug_rprintln, debug_rtt_init, rprintln, rtt_init, rtt_init_default, rtt_init_print};
+use rtt_target::{
+    debug_rprintln, debug_rtt_init, rprintln, rtt_init, rtt_init_default, rtt_init_print,
+};
 use serde::{Deserialize, de};
 use serde_cbor::de::from_mut_slice;
 
@@ -50,24 +52,16 @@ struct Config {
     position_speed: u16,
 }
 
-static SHARED_SERVO_CONFIG_CHANNEL: pubsub::PubSubChannel<
-    ThreadModeRawMutex,
-    ServoSetup,
-    10,
-    1,
-    1,
-> = pubsub::PubSubChannel::new();
-
 bind_interrupts!(struct Irqs {
     UARTE0_UART0 => uarte::InterruptHandler<peripherals::UARTE0>;
     SPIM0_SPIS0_TWIM0_TWIS0_SPI0_TWI0  => twim::InterruptHandler<peripherals::TWISPI0>;
 });
 
+static SERVO_SETUP_CHANNEL: PubSubChannel<ThreadModeRawMutex, ServoSetup, 10, 1, 1> =
+    PubSubChannel::new();
+
 #[embassy_executor::main]
 async fn main(spawner: Spawner) {
-    // debug_rtt_init!();
-
-    // debug_rprintln!("debug info");
 
     rtt_init_print!();
 
@@ -118,15 +112,12 @@ async fn main(spawner: Spawner) {
 
     let (mut tx, rx) = uart.split();
 
-    spawner.spawn(reader(rx)).unwrap();
+    let publisher = SERVO_SETUP_CHANNEL.publisher().unwrap();
+    let mut sub = SERVO_SETUP_CHANNEL.subscriber().unwrap();
+
+    spawner.spawn(reader(publisher, rx)).unwrap();
     // _col2.set_low();
     // _col3.set_low();
-
-    // SERVOS RUN
-
-    pwm.set_channel_on(Channel::All, 0).unwrap();
-
-    let mut sub = SHARED_SERVO_CONFIG_CHANNEL.subscriber().unwrap();
 
     spawner.spawn(servo_driver(sub, pwm));
 
@@ -155,7 +146,7 @@ fn smooth(current: f32, target: f32) -> f32 {
 #[embassy_executor::task]
 async fn servo_driver(
     mut subcriber: Subscriber<'static, ThreadModeRawMutex, ServoSetup, 10, 1, 1>,
-    mut pwm: Pca9685<Twim<'static, peripherals::TWISPI0>>
+    mut pwm: Pca9685<Twim<'static, peripherals::TWISPI0>>,
 ) {
     let mut pwm_value = 300.0;
     loop {
@@ -174,7 +165,10 @@ async fn servo_driver(
 }
 
 #[embassy_executor::task]
-async fn reader(mut rx: UarteRx<'static, peripherals::UARTE0>) {
+async fn reader(
+    mut publisher: Publisher<'static, ThreadModeRawMutex, ServoSetup, 10, 1, 1>,
+    mut rx: UarteRx<'static, peripherals::UARTE0>,
+) {
     let mut frame_buf = Vec::<u8, 256>::new();
     let mut decode_buf = [0u8; 256];
 
@@ -196,8 +190,7 @@ async fn reader(mut rx: UarteRx<'static, peripherals::UARTE0>) {
 
                                 match incomming {
                                     IncomingMessage::Sensor(data) => {
-                                        let pub1 = SHARED_SERVO_CONFIG_CHANNEL.publisher().unwrap();
-                                        pub1.publish_immediate(data);
+                                        publisher.publish_immediate(data);
                                     }
                                     IncomingMessage::Config(config) => {}
                                 }
