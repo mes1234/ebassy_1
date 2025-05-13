@@ -9,27 +9,28 @@ use embassy_nrf::{
     twim::{self, Twim},
     uarte::{self, UarteRx},
 };
-use embassy_sync::blocking_mutex::raw::ThreadModeRawMutex;
 use embassy_sync::pubsub;
+use embassy_sync::{blocking_mutex::raw::ThreadModeRawMutex, pubsub::Subscriber};
 use embassy_time::Timer;
 use pwm_pca9685::{Address, Channel, Pca9685};
 
 use cobs::decode_in_place;
 use heapless::Vec;
 
-use serde::Deserialize;
+use rtt_target::{debug_rprintln, debug_rtt_init, rprintln, rtt_init, rtt_init_default, rtt_init_print};
+use serde::{Deserialize, de};
 use serde_cbor::de::from_mut_slice;
 
 use panic_probe as _;
 
 #[derive(Debug, Deserialize, Clone)]
 enum IncomingMessage {
-    Sensor(SensorData),
+    Sensor(ServoSetup),
     Config(Config),
 }
 
 #[derive(Debug, Deserialize, Clone)]
-struct SensorData {
+struct ServoSetup {
     position_c0: u16,
     position_c1: u16,
     position_c2: u16,
@@ -49,12 +50,13 @@ struct Config {
     position_speed: u16,
 }
 
-static SHARED_CURRENT_C0: pubsub::PubSubChannel<ThreadModeRawMutex, u16, 10, 1, 1> =
-    pubsub::PubSubChannel::new();
-static SHARED_CURRENT_C1: pubsub::PubSubChannel<ThreadModeRawMutex, SensorData, 10, 1, 1> =
-    pubsub::PubSubChannel::new();
-static SHARED_CURRENT_C2: pubsub::PubSubChannel<ThreadModeRawMutex, u16, 10, 1, 1> =
-    pubsub::PubSubChannel::new();
+static SHARED_SERVO_CONFIG_CHANNEL: pubsub::PubSubChannel<
+    ThreadModeRawMutex,
+    ServoSetup,
+    10,
+    1,
+    1,
+> = pubsub::PubSubChannel::new();
 
 bind_interrupts!(struct Irqs {
     UARTE0_UART0 => uarte::InterruptHandler<peripherals::UARTE0>;
@@ -63,6 +65,14 @@ bind_interrupts!(struct Irqs {
 
 #[embassy_executor::main]
 async fn main(spawner: Spawner) {
+    // debug_rtt_init!();
+
+    // debug_rprintln!("debug info");
+
+    rtt_init_print!();
+
+    rprintln!("Yello");
+
     let p = embassy_nrf::init(Default::default());
 
     // LED init
@@ -109,10 +119,6 @@ async fn main(spawner: Spawner) {
     let (mut tx, rx) = uart.split();
 
     spawner.spawn(reader(rx)).unwrap();
-
-    // LED turn on
-
-    // _col1.set_low();
     // _col2.set_low();
     // _col3.set_low();
 
@@ -120,21 +126,14 @@ async fn main(spawner: Spawner) {
 
     pwm.set_channel_on(Channel::All, 0).unwrap();
 
-    let mut pwm_value: f32 = 300.0;
+    let mut sub = SHARED_SERVO_CONFIG_CHANNEL.subscriber().unwrap();
 
-    let mut sub = SHARED_CURRENT_C0.subscriber().unwrap();
+    spawner.spawn(servo_driver(sub, pwm));
 
     loop {
-        let val_for_pwm = sub.next_message_pure().await as f32;
-
-        while (val_for_pwm - pwm_value).abs() > 1.0 {
-            _col1.set_low();
-            pwm_value = smooth(pwm_value, val_for_pwm);
-            pwm.set_channel_off(Channel::C15, pwm_value as u16).unwrap();
-            pwm.set_channel_off(Channel::C14, pwm_value as u16).unwrap();
-
-            Timer::after_millis(10).await;
-        }
+        Timer::after_millis(100).await;
+        _col1.set_low();
+        Timer::after_millis(100).await;
         _col1.set_high();
     }
 }
@@ -154,6 +153,27 @@ fn smooth(current: f32, target: f32) -> f32 {
 }
 
 #[embassy_executor::task]
+async fn servo_driver(
+    mut subcriber: Subscriber<'static, ThreadModeRawMutex, ServoSetup, 10, 1, 1>,
+    mut pwm: Pca9685<Twim<'static, peripherals::TWISPI0>>
+) {
+    let mut pwm_value = 300.0;
+    loop {
+        let new_setup = subcriber.next_message_pure().await;
+
+        let val_for_pwm = new_setup.position_c0 as f32;
+
+        while (val_for_pwm - pwm_value).abs() > 1.0 {
+            pwm_value = smooth(pwm_value, val_for_pwm);
+            pwm.set_channel_off(Channel::C15, pwm_value as u16).unwrap();
+            pwm.set_channel_off(Channel::C14, pwm_value as u16).unwrap();
+
+            Timer::after_millis(10).await;
+        }
+    }
+}
+
+#[embassy_executor::task]
 async fn reader(mut rx: UarteRx<'static, peripherals::UARTE0>) {
     let mut frame_buf = Vec::<u8, 256>::new();
     let mut decode_buf = [0u8; 256];
@@ -169,16 +189,17 @@ async fn reader(mut rx: UarteRx<'static, peripherals::UARTE0>) {
 
                         match decode_in_place(&mut decode_buf[..frame_buf.len()]) {
                             Ok(decoded_len) => {
-                                let incomming =
-                                    from_mut_slice::<IncomingMessage>(&mut decode_buf[..decoded_len])
-                                        .unwrap();
+                                let incomming = from_mut_slice::<IncomingMessage>(
+                                    &mut decode_buf[..decoded_len],
+                                )
+                                .unwrap();
 
                                 match incomming {
-                                     IncomingMessage::Sensor(data) => {
-                                        let pub1 = SHARED_CURRENT_C0.publisher().unwrap();
-                                        pub1.publish_immediate(data.position_c0);
+                                    IncomingMessage::Sensor(data) => {
+                                        let pub1 = SHARED_SERVO_CONFIG_CHANNEL.publisher().unwrap();
+                                        pub1.publish_immediate(data);
                                     }
-                                     IncomingMessage::Config(config) => {}
+                                    IncomingMessage::Config(config) => {}
                                 }
 
                                 frame_buf.clear();
