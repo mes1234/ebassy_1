@@ -88,9 +88,6 @@ async fn main(spawner: Spawner) {
     let mut sub = SERVO_SETUP_CHANNEL.subscriber().unwrap();
 
     let _ = spawner.spawn(uart_reader_driver(publisher, rx)).unwrap();
-    // _col2.set_low();
-    // _col3.set_low();
-
     let _ = spawner.spawn(servo_driver(sub, pwm));
 
     loop {
