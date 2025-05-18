@@ -12,13 +12,15 @@ use embassy_nrf::{
 use embassy_sync::blocking_mutex::raw::ThreadModeRawMutex;
 use embassy_sync::pubsub::PubSubChannel;
 use embassy_time::Timer;
-use pwm_pca9685::{Address, Pca9685};
 
 use rtt_target::{rprintln, rtt_init_print};
 
 mod drivers;
+use drivers::led_driver::led_pin;
+use drivers::pwm_driver::pwm_init;
 use drivers::servo_driver::servo_driver;
-use drivers::uart_reader_driver::uart_reader_driver;
+use drivers::uart_driver::uart_init;
+use drivers::uart_driver::uart_reader_driver;
 
 mod common;
 use common::contracts::ServoSetup;
@@ -37,52 +39,22 @@ static SERVO_SETUP_CHANNEL: PubSubChannel<ThreadModeRawMutex, ServoSetup, 10, 1,
 async fn main(spawner: Spawner) {
     rtt_init_print!();
 
-    rprintln!("Yello");
+    rprintln!("System Booting...");
 
     let p = embassy_nrf::init(Default::default());
 
-    // LED init
+    rprintln!("System Booting: Peripherals init: OK");
     let _row1 = led_pin(p.P0_21.degrade());
     let mut _col1 = led_pin(p.P0_28.degrade());
     let mut _col2 = led_pin(p.P0_11.degrade());
     let mut _col3 = led_pin(p.P0_31.degrade());
 
-    // PCA9685 init
+    rprintln!("System Booting: LED init: OK");
 
-    let pca9685_address = Address::default();
+    let pwm = pwm_init(p.TWISPI0, p.P1_00.into(), p.P0_26.into(), Irqs);
+    let (mut tx, rx) = uart_init(p.UARTE0, p.P1_08.into(), p.P0_06.into(), Irqs);
 
-    let twim_config = twim::Config::default();
-
-    let twim_device = Twim::new(
-        p.TWISPI0,
-        Irqs,
-        p.P1_00.degrade(),
-        p.P0_26.degrade(),
-        twim_config,
-    );
-
-    let mut pwm = Pca9685::new(twim_device, pca9685_address).unwrap();
-
-    pwm.set_prescale(100).unwrap();
-
-    pwm.enable().unwrap();
-
-    // UART init
-
-    let mut uart_config = uarte::Config::default();
-
-    uart_config.parity = uarte::Parity::EXCLUDED;
-    uart_config.baudrate = uarte::Baudrate::BAUD38400;
-
-    let uart = uarte::Uarte::new(
-        p.UARTE0,
-        Irqs,
-        p.P1_08.degrade(),
-        p.P0_06.degrade(),
-        uart_config,
-    );
-
-    let (mut tx, rx) = uart.split();
+    rprintln!("System Booting: All drivers init: OK");
 
     let publisher = SERVO_SETUP_CHANNEL.publisher().unwrap();
     let mut sub = SERVO_SETUP_CHANNEL.subscriber().unwrap();
@@ -96,8 +68,4 @@ async fn main(spawner: Spawner) {
         Timer::after_millis(100).await;
         _col1.set_high();
     }
-}
-
-fn led_pin(pin: AnyPin) -> Output<'static> {
-    Output::new(pin, Level::High, OutputDrive::Standard)
 }
