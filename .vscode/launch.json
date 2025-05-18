@@ -11,8 +11,8 @@
             "request": "launch",
             "name": "probe-rs Test",
             "cwd": "${workspaceFolder}",
-            // "connectUnderReset": true,
             "chip": "nRF51822_xxAA",
+            "connectUnderReset": true,
             "flashingConfig": {
                 "flashingEnabled": false,
                 "haltAfterReset": true
