@@ -54,7 +54,7 @@ async fn main(spawner: Spawner) {
     let pwm = pwm_init(p.TWISPI0, p.P1_00.into(), p.P0_26.into(), Irqs);
     let (mut tx, rx) = uart_init(p.UARTE0, p.P1_08.into(), p.P0_06.into(), Irqs);
 
-    rprintln!("System Booting: UART driver init: OK");
+    rprintln!("System Booting: All drivers init: OK");
 
     let publisher = SERVO_SETUP_CHANNEL.publisher().unwrap();
     let mut sub = SERVO_SETUP_CHANNEL.subscriber().unwrap();
