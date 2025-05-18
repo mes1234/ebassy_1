@@ -1,14 +1,26 @@
 use crate::common::contracts::IncomingMessage;
 use crate::common::contracts::ServoSetup;
 
+use cobs::decode_in_place;
+use embassy_nrf::uarte::UarteRx;
+use embassy_nrf::uarte::UarteTx;
 use heapless::Vec;
 use serde_cbor::de::from_mut_slice;
-use cobs::decode_in_place;
-use embassy_nrf::peripherals;
-use embassy_nrf::uarte::UarteRx;
+
+use embassy_nrf::buffered_uarte::InterruptHandler;
+use embassy_nrf::interrupt::typelevel;
+use embassy_nrf::{
+    bind_interrupts,
+    gpio::{AnyPin, Level, Output, OutputDrive, Pin},
+    peripherals::{self,UARTE0},
+    twim::{self, Twim},
+    uarte,
+};
+
+use rtt_target::rprintln;
 
 use embassy_sync::blocking_mutex::raw::ThreadModeRawMutex;
-use embassy_sync::pubsub::Publisher; 
+use embassy_sync::pubsub::Publisher;
 
 #[embassy_executor::task]
 pub async fn uart_reader_driver(
@@ -57,4 +69,29 @@ pub async fn uart_reader_driver(
             }
         }
     }
+}
+
+pub fn uart_init(
+    timer_instance: peripherals::UARTE0,
+    rx_pin: AnyPin,
+    tx_pin: AnyPin,
+    irqs: impl typelevel::Binding<
+        <peripherals::UARTE0 as embassy_nrf::uarte::Instance>::Interrupt,
+        uarte::InterruptHandler<peripherals::UARTE0>,
+    > + 'static,
+) -> (
+    UarteTx<'static, peripherals::UARTE0>,
+    UarteRx<'static, peripherals::UARTE0>,
+) {
+    let mut uart_config = uarte::Config::default();
+
+    uart_config.parity = uarte::Parity::EXCLUDED;
+    uart_config.baudrate = uarte::Baudrate::BAUD38400;
+
+    let uart = uarte::Uarte::new(timer_instance, irqs, rx_pin, tx_pin, uart_config);
+
+    let (mut tx, rx) = uart.split();
+
+    rprintln!("System Booting: UART driver init: OK");
+    (tx, rx)
 }

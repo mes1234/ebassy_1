@@ -19,7 +19,8 @@ mod drivers;
 use drivers::led_driver::led_pin;
 use drivers::pwm_driver::pwm_init;
 use drivers::servo_driver::servo_driver;
-use drivers::uart_reader_driver::uart_reader_driver;
+use drivers::uart_driver::uart_init;
+use drivers::uart_driver::uart_reader_driver;
 
 mod common;
 use common::contracts::ServoSetup;
@@ -51,23 +52,7 @@ async fn main(spawner: Spawner) {
     rprintln!("System Booting: LED init: OK");
 
     let pwm = pwm_init(p.TWISPI0, p.P1_00.into(), p.P0_26.into(), Irqs);
-
-    // UART init
-
-    let mut uart_config = uarte::Config::default();
-
-    uart_config.parity = uarte::Parity::EXCLUDED;
-    uart_config.baudrate = uarte::Baudrate::BAUD38400;
-
-    let uart = uarte::Uarte::new(
-        p.UARTE0,
-        Irqs,
-        p.P1_08.degrade(),
-        p.P0_06.degrade(),
-        uart_config,
-    );
-
-    let (mut tx, rx) = uart.split();
+    let (mut tx, rx) = uart_init(p.UARTE0, p.P1_08.into(), p.P0_06.into(), Irqs);
 
     rprintln!("System Booting: UART driver init: OK");
 
