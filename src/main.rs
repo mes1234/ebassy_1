@@ -11,6 +11,7 @@ use embassy_nrf::{
 };
 use embassy_sync::blocking_mutex::raw::ThreadModeRawMutex;
 use embassy_sync::pubsub::PubSubChannel;
+use embassy_sync::mutex::Mutex;
 use embassy_time::Timer;
 
 use rtt_target::{rprintln, rtt_init_print};
@@ -22,8 +23,12 @@ use drivers::servo_driver::servo_driver;
 use drivers::uart_driver::uart_init;
 use drivers::uart_driver::uart_reader_driver;
 
+mod utils;
+use utils::config::configuration_handler;
+
 mod common;
-use common::contracts::ServoSetup;
+use common::contracts::{Config, ServoSetup};
+ 
 
 use panic_probe as _;
 
@@ -34,6 +39,11 @@ bind_interrupts!(struct Irqs {
 
 static SERVO_SETUP_CHANNEL: PubSubChannel<ThreadModeRawMutex, ServoSetup, 10, 1, 1> =
     PubSubChannel::new();
+
+static CONFIG_CHANNEL: PubSubChannel<ThreadModeRawMutex, Config, 10, 1, 1> =
+    PubSubChannel::new();
+
+static CONFIG: Mutex<ThreadModeRawMutex, Config> = Mutex::new(Config { position_steps: 10 });
 
 #[embassy_executor::main]
 async fn main(spawner: Spawner) {
@@ -56,11 +66,15 @@ async fn main(spawner: Spawner) {
 
     rprintln!("System Booting: All drivers init: OK");
 
-    let publisher = SERVO_SETUP_CHANNEL.publisher().unwrap();
-    let mut sub = SERVO_SETUP_CHANNEL.subscriber().unwrap();
+    let servo_publisher = SERVO_SETUP_CHANNEL.publisher().unwrap();
+    let mut servo_subscriber = SERVO_SETUP_CHANNEL.subscriber().unwrap();
 
-    let _ = spawner.spawn(uart_reader_driver(publisher, rx)).unwrap();
-    let _ = spawner.spawn(servo_driver(sub, pwm));
+    let config_publisher = CONFIG_CHANNEL.publisher().unwrap();
+    let mut config_subscriber = CONFIG_CHANNEL.subscriber().unwrap();
+
+    let _ = spawner.spawn(uart_reader_driver(servo_publisher,config_publisher, rx)).unwrap();
+    let _ = spawner.spawn(servo_driver(servo_subscriber, pwm, &CONFIG));
+    let _ = spawner.spawn(configuration_handler(config_subscriber, &CONFIG));
 
     loop {
         Timer::after_millis(100).await;

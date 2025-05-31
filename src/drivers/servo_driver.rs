@@ -9,6 +9,7 @@ use pwm_pca9685::{Channel, Pca9685};
 
 use rtt_target::{rprintln, rtt_init_print};
 
+use crate::Config;
 use crate::ServoSetup;
 
 // Represents current state of servos
@@ -21,10 +22,17 @@ static TARGET: Mutex<ThreadModeRawMutex, [f32; 12]> = Mutex::new([0.0; 12]);
 pub async fn servo_driver(
     mut subcriber: Subscriber<'static, ThreadModeRawMutex, ServoSetup, 10, 1, 1>,
     mut pwm: Pca9685<Twim<'static, peripherals::TWISPI0>>,
+    config: &'static Mutex<ThreadModeRawMutex, Config>,
 ) {
     let mut pwm_value = 300.0;
     loop {
         let new_setup = subcriber.next_message_pure().await;
+
+        let config_guard = config.lock().await;
+
+        let cuurent_config = config_guard.clone();
+
+        drop(config_guard);
 
         rprintln!("SERVO DRIVER: OBTAINED NEW VALUE");
 
@@ -35,7 +43,9 @@ pub async fn servo_driver(
         let mut target_guard = TARGET.lock().await;
         let mut state_guard = STATE.lock().await;
 
-        for _ in 0..12 {
+        rprintln!("SERVO DRIVER: RUN STEPS {}", cuurent_config.position_steps);
+
+        for _ in 0..cuurent_config.position_steps {
             for i in 0..12 {
                 // Assume close enough but dont modify servo position
                 if (state_guard[i] - target_guard[i]).abs() < 5.0 {

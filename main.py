@@ -7,9 +7,22 @@ class CBOR_UART_Communicator:
     def __init__(self, port, baudrate=9600):
         self.ser = serial.Serial(port, baudrate, timeout=1)
         
-    def send(self, data):
+    def send_position(self, data):
 
         data_to_send = {"Sensor": data}
+        # Serialize to CBOR
+        cbor_data = cbor2.dumps(data_to_send)
+        
+        # Encode with COBS
+        cobs_data = cobs.encode(cbor_data)
+        
+        # Add null terminator and send
+        self.ser.write(cobs_data + b'\x00')
+
+        
+    def send_config(self, data):
+
+        data_to_send = {"Config": data}
         # Serialize to CBOR
         cbor_data = cbor2.dumps(data_to_send)
         
@@ -55,10 +68,16 @@ if __name__ == "__main__":
     
     value = 450
     factor = 20
+
+    comm.send_config({
+        "position_steps": 6
+    })
+    time.sleep(10)
+
     while True:  
-        #value = value  + factor
+        value = value  + factor
         # Send a dictionary
-        comm.send({ 
+        comm.send_position({ 
             "position_c0": value, 
             "position_c1": value+1, 
             "position_c2": value+2, 
@@ -73,35 +92,9 @@ if __name__ == "__main__":
             "position_c11": value+11, 
         }) 
 
-        if value == 450:
-            value = 250
-        else:  # value is 350
-            value = 450
- 
+        if (value > 450):
+            factor = -1*factor
+        if (value < 350):
+            factor = -1*factor
         print(f"Sent value: {value}")
         time.sleep(0.2)
-
-    # while True:  
-    #     value = value  + factor
-    #     # Send a dictionary
-    #     comm.send({ 
-    #         "position_c0": value, 
-    #         "position_c1": value+1, 
-    #         "position_c2": value+2, 
-    #         "position_c3": value+3, 
-    #         "position_c4": value+4, 
-    #         "position_c5": value+5, 
-    #         "position_c6": value+6, 
-    #         "position_c7": value+7, 
-    #         "position_c8": value+8, 
-    #         "position_c9": value+9, 
-    #         "position_c10": value+10, 
-    #         "position_c11": value+11, 
-    #     }) 
-
-    #     if (value > 450):
-    #         factor = -1*factor
-    #     if (value < 350):
-    #         factor = -1*factor
-    #     print(f"Sent value: {value}")
-    #     time.sleep(0.2)

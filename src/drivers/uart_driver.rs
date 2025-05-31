@@ -1,5 +1,5 @@
 use crate::common::contracts::IncomingMessage;
-use crate::common::contracts::ServoSetup;
+use crate::common::contracts::{ServoSetup,Config};
 
 use cobs::decode_in_place;
 use embassy_nrf::uarte::UarteRx;
@@ -24,7 +24,8 @@ use embassy_sync::pubsub::Publisher;
 
 #[embassy_executor::task]
 pub async fn uart_reader_driver(
-    mut publisher: Publisher<'static, ThreadModeRawMutex, ServoSetup, 10, 1, 1>,
+    mut servo_publisher: Publisher<'static, ThreadModeRawMutex, ServoSetup, 10, 1, 1>,
+    mut config_publisher: Publisher<'static, ThreadModeRawMutex, Config, 10, 1, 1>,
     mut rx: UarteRx<'static, peripherals::UARTE0>,
 ) {
     let mut frame_buf = Vec::<u8, 256>::new();
@@ -48,9 +49,12 @@ pub async fn uart_reader_driver(
 
                                 match incomming {
                                     IncomingMessage::Sensor(data) => {
-                                        publisher.publish_immediate(data);
+                                        servo_publisher.publish_immediate(data);
                                     }
-                                    IncomingMessage::Config(config) => {}
+                                    IncomingMessage::Config(config) => {
+                                        rprintln!("Configuration: New config received");
+                                        config_publisher.publish_immediate(config);
+                                    }
                                 }
 
                                 frame_buf.clear();
