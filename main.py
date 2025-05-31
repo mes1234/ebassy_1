@@ -72,7 +72,7 @@ if __name__ == "__main__":
     comm.send_config({
         "position_steps": 6
     })
-    time.sleep(10)
+    time.sleep(3)
 
     while True:  
         value = value  + factor

@@ -2,16 +2,10 @@
 #![no_main]
 
 use embassy_executor::Spawner;
-use embassy_nrf::{
-    bind_interrupts,
-    gpio::{AnyPin, Level, Output, OutputDrive, Pin},
-    peripherals,
-    twim::{self, Twim},
-    uarte,
-};
+use embassy_nrf::{bind_interrupts, gpio::Pin, peripherals, twim, uarte};
 use embassy_sync::blocking_mutex::raw::ThreadModeRawMutex;
-use embassy_sync::pubsub::PubSubChannel;
 use embassy_sync::mutex::Mutex;
+use embassy_sync::pubsub::PubSubChannel;
 use embassy_time::Timer;
 
 use rtt_target::{rprintln, rtt_init_print};
@@ -28,7 +22,6 @@ use utils::config::configuration_handler;
 
 mod common;
 use common::contracts::{Config, ServoSetup};
- 
 
 use panic_probe as _;
 
@@ -40,8 +33,7 @@ bind_interrupts!(struct Irqs {
 static SERVO_SETUP_CHANNEL: PubSubChannel<ThreadModeRawMutex, ServoSetup, 10, 1, 1> =
     PubSubChannel::new();
 
-static CONFIG_CHANNEL: PubSubChannel<ThreadModeRawMutex, Config, 10, 1, 1> =
-    PubSubChannel::new();
+static CONFIG_CHANNEL: PubSubChannel<ThreadModeRawMutex, Config, 10, 1, 1> = PubSubChannel::new();
 
 static CONFIG: Mutex<ThreadModeRawMutex, Config> = Mutex::new(Config { position_steps: 10 });
 
@@ -62,17 +54,19 @@ async fn main(spawner: Spawner) {
     rprintln!("System Booting: LED init: OK");
 
     let pwm = pwm_init(p.TWISPI0, p.P1_00.into(), p.P0_26.into(), Irqs);
-    let (mut tx, rx) = uart_init(p.UARTE0, p.P1_08.into(), p.P0_06.into(), Irqs);
+    let (_, rx) = uart_init(p.UARTE0, p.P1_08.into(), p.P0_06.into(), Irqs);
 
     rprintln!("System Booting: All drivers init: OK");
 
     let servo_publisher = SERVO_SETUP_CHANNEL.publisher().unwrap();
-    let mut servo_subscriber = SERVO_SETUP_CHANNEL.subscriber().unwrap();
+    let servo_subscriber = SERVO_SETUP_CHANNEL.subscriber().unwrap();
 
     let config_publisher = CONFIG_CHANNEL.publisher().unwrap();
-    let mut config_subscriber = CONFIG_CHANNEL.subscriber().unwrap();
+    let config_subscriber = CONFIG_CHANNEL.subscriber().unwrap();
 
-    let _ = spawner.spawn(uart_reader_driver(servo_publisher,config_publisher, rx)).unwrap();
+    let _ = spawner
+        .spawn(uart_reader_driver(servo_publisher, config_publisher, rx))
+        .unwrap();
     let _ = spawner.spawn(servo_driver(servo_subscriber, pwm, &CONFIG));
     let _ = spawner.spawn(configuration_handler(config_subscriber, &CONFIG));
 

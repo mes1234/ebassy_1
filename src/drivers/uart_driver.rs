@@ -1,5 +1,5 @@
 use crate::common::contracts::IncomingMessage;
-use crate::common::contracts::{ServoSetup,Config};
+use crate::common::contracts::{Config, ServoSetup};
 
 use cobs::decode_in_place;
 use embassy_nrf::uarte::UarteRx;
@@ -7,15 +7,8 @@ use embassy_nrf::uarte::UarteTx;
 use heapless::Vec;
 use serde_cbor::de::from_mut_slice;
 
-use embassy_nrf::buffered_uarte::InterruptHandler;
 use embassy_nrf::interrupt::typelevel;
-use embassy_nrf::{
-    bind_interrupts,
-    gpio::{AnyPin, Level, Output, OutputDrive, Pin},
-    peripherals::{self,UARTE0},
-    twim::{self, Twim},
-    uarte,
-};
+use embassy_nrf::{gpio::AnyPin, peripherals, uarte};
 
 use rtt_target::rprintln;
 
@@ -24,8 +17,8 @@ use embassy_sync::pubsub::Publisher;
 
 #[embassy_executor::task]
 pub async fn uart_reader_driver(
-    mut servo_publisher: Publisher<'static, ThreadModeRawMutex, ServoSetup, 10, 1, 1>,
-    mut config_publisher: Publisher<'static, ThreadModeRawMutex, Config, 10, 1, 1>,
+    servo_publisher: Publisher<'static, ThreadModeRawMutex, ServoSetup, 10, 1, 1>,
+    config_publisher: Publisher<'static, ThreadModeRawMutex, Config, 10, 1, 1>,
     mut rx: UarteRx<'static, peripherals::UARTE0>,
 ) {
     let mut frame_buf = Vec::<u8, 256>::new();
@@ -94,7 +87,7 @@ pub fn uart_init(
 
     let uart = uarte::Uarte::new(timer_instance, irqs, rx_pin, tx_pin, uart_config);
 
-    let (mut tx, rx) = uart.split();
+    let (tx, rx) = uart.split();
 
     rprintln!("System Booting: UART driver init: OK");
     (tx, rx)

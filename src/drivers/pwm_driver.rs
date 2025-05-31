@@ -1,5 +1,4 @@
 use embassy_nrf::{
-    Peripherals, bind_interrupts,
     gpio::AnyPin,
     interrupt::typelevel,
     peripherals::{self, TWISPI0},
@@ -18,7 +17,6 @@ pub fn pwm_init(
         InterruptHandler<TWISPI0>,
     > + 'static,
 ) -> Pca9685<Twim<'static, peripherals::TWISPI0>> {
-
     let pca9685_address = Address::default();
     let twim_config = twim::Config::default();
     let twim_device = Twim::new(twim_instance, irqs, sda_pin, scl_pin, twim_config);
@@ -40,7 +38,10 @@ pub fn pwm_init(
             rprintln!("System Booting: PWM driver init: PCA9685 prescale set OK");
         }
         Err(e) => {
-            rprintln!("System Booting: PWM driver init: Error during PCA9685 prescale set:{:?}", e);
+            rprintln!(
+                "System Booting: PWM driver init: Error during PCA9685 prescale set:{:?}",
+                e
+            );
             panic!("System Booting: PWM driver init: Error during PCA9685 prescale set")
         }
     };
@@ -50,7 +51,10 @@ pub fn pwm_init(
             rprintln!("System Booting: PWM driver init: PCA9685 enabled OK");
         }
         Err(e) => {
-            rprintln!("System Booting: PWM driver init: Error during PCA9685 enabled :{:?}", e);
+            rprintln!(
+                "System Booting: PWM driver init: Error during PCA9685 enabled :{:?}",
+                e
+            );
             panic!("System Booting: PWM driver init: Error during PCA9685 enabled ")
         }
     }

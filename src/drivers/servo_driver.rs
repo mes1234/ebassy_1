@@ -7,7 +7,7 @@ use embassy_time::Timer;
 
 use pwm_pca9685::{Channel, Pca9685};
 
-use rtt_target::{rprintln, rtt_init_print};
+use rtt_target::rprintln;
 
 use crate::Config;
 use crate::ServoSetup;
@@ -24,7 +24,6 @@ pub async fn servo_driver(
     mut pwm: Pca9685<Twim<'static, peripherals::TWISPI0>>,
     config: &'static Mutex<ThreadModeRawMutex, Config>,
 ) {
-    let mut pwm_value = 300.0;
     loop {
         let new_setup = subcriber.next_message_pure().await;
 
@@ -40,7 +39,7 @@ pub async fn servo_driver(
 
         rprintln!("SERVO DRIVER: TARGETS INITALIZED");
 
-        let mut target_guard = TARGET.lock().await;
+        let target_guard = TARGET.lock().await;
         let mut state_guard = STATE.lock().await;
 
         rprintln!("SERVO DRIVER: RUN STEPS {}", cuurent_config.position_steps);
