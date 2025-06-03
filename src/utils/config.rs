@@ -18,6 +18,6 @@ pub async fn configuration_handler(
         *config_guard = new_config;
         drop(config_guard);
 
-        rprintln!("New configuration obtained and saved")
+        rprintln!("Configuration: New config saved")
     }
 }

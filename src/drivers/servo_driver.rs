@@ -9,6 +9,7 @@ use pwm_pca9685::{Channel, Pca9685};
 
 use rtt_target::rprintln;
 
+use crate::common::contracts::ServoConfig;
 use crate::Config;
 use crate::ServoSetup;
 
@@ -17,6 +18,9 @@ static STATE: Mutex<ThreadModeRawMutex, [f32; 12]> = Mutex::new([0.0; 12]);
 
 // Represents target state of servos
 static TARGET: Mutex<ThreadModeRawMutex, [f32; 12]> = Mutex::new([0.0; 12]);
+
+const POSITION_0: f32 = 100.0;
+const POSITION_180: f32 = 600.0;
 
 #[embassy_executor::task]
 pub async fn servo_driver(
@@ -33,11 +37,11 @@ pub async fn servo_driver(
 
         drop(config_guard);
 
-        rprintln!("SERVO DRIVER: OBTAINED NEW VALUE");
+        //rprintln!("SERVO DRIVER: OBTAINED NEW VALUE");
 
         assign_target(new_setup, &TARGET).await;
 
-        rprintln!("SERVO DRIVER: TARGETS INITALIZED");
+        //rprintln!("SERVO DRIVER: TARGETS INITALIZED");
 
         let target_guard = TARGET.lock().await;
         let mut state_guard = STATE.lock().await;
@@ -54,45 +58,25 @@ pub async fn servo_driver(
 
                 state_guard[i] = smooth(state_guard[i], target_guard[i]);
 
-                match i {
-                    0 => pwm
-                        .set_channel_off(Channel::C0, state_guard[i] as u16)
-                        .unwrap(),
-                    1 => pwm
-                        .set_channel_off(Channel::C1, state_guard[i] as u16)
-                        .unwrap(),
-                    2 => pwm
-                        .set_channel_off(Channel::C2, state_guard[i] as u16)
-                        .unwrap(),
-                    3 => pwm
-                        .set_channel_off(Channel::C3, state_guard[i] as u16)
-                        .unwrap(),
-                    4 => pwm
-                        .set_channel_off(Channel::C4, state_guard[i] as u16)
-                        .unwrap(),
-                    5 => pwm
-                        .set_channel_off(Channel::C5, state_guard[i] as u16)
-                        .unwrap(),
-                    6 => pwm
-                        .set_channel_off(Channel::C6, state_guard[i] as u16)
-                        .unwrap(),
-                    7 => pwm
-                        .set_channel_off(Channel::C7, state_guard[i] as u16)
-                        .unwrap(),
-                    8 => pwm
-                        .set_channel_off(Channel::C8, state_guard[i] as u16)
-                        .unwrap(),
-                    9 => pwm
-                        .set_channel_off(Channel::C9, state_guard[i] as u16)
-                        .unwrap(),
-                    10 => pwm
-                        .set_channel_off(Channel::C10, state_guard[i] as u16)
-                        .unwrap(),
-                    11 => pwm
-                        .set_channel_off(Channel::C11, state_guard[i] as u16)
-                        .unwrap(),
-                    _ => {}
-                }
+                let channel = match i {
+                    0 => Channel::C0,
+                    1 => Channel::C1,
+                    2 => Channel::C2,
+                    3 => Channel::C3,
+                    4 => Channel::C4,
+                    5 => Channel::C5,
+                    6 => Channel::C6,
+                    7 => Channel::C7,
+                    8 => Channel::C8,
+                    9 => Channel::C9,
+                    10 => Channel::C10,
+                    11 => Channel::C11,
+                    _ => Channel::C15
+                };
+
+                let pwm_setup = scale_and_cap(state_guard[i],&cuurent_config.c0_config);
+
+                pwm.set_channel_off(channel, pwm_setup).unwrap();
             }
 
             Timer::after_millis(5).await;
@@ -100,6 +84,7 @@ pub async fn servo_driver(
     }
 }
 
+// TODO this function doesnt work!!!!
 fn smooth(current: f32, target: f32) -> f32 {
     let current_f = current as f32;
     let target_f = target as f32;
@@ -107,7 +92,28 @@ fn smooth(current: f32, target: f32) -> f32 {
     let factor: f32 = 0.05;
     let result_f = ((1.0 - factor) * current_f) + (factor * target_f);
 
-    result_f
+    // result_f
+
+    target
+}
+
+fn scale_and_cap(state: f32, setup: &ServoConfig) -> u16 {
+    
+    let lower_bound = setup.lower as f32;
+    let mut upper_bound = setup.higher as f32;
+
+    if upper_bound > 180.0 {
+        upper_bound = 180.0;
+    }
+
+    let clamped_angle = state.clamp(lower_bound, upper_bound)/(upper_bound - lower_bound);
+
+
+    let result = POSITION_0 + (POSITION_180 - POSITION_0) * clamped_angle;
+
+    rprintln!("SERVO DRIVER: NEW_POSITION {}", result);
+
+    result as u16
 }
 
 async fn assign_target(

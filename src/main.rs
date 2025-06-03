@@ -35,7 +35,7 @@ static SERVO_SETUP_CHANNEL: PubSubChannel<ThreadModeRawMutex, ServoSetup, 10, 1,
 
 static CONFIG_CHANNEL: PubSubChannel<ThreadModeRawMutex, Config, 10, 1, 1> = PubSubChannel::new();
 
-static CONFIG: Mutex<ThreadModeRawMutex, Config> = Mutex::new(Config { position_steps: 10 });
+static CONFIG: Mutex<ThreadModeRawMutex, Config> = Mutex::new(Config::default());
 
 #[embassy_executor::main]
 async fn main(spawner: Spawner) {

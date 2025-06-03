@@ -66,35 +66,69 @@ class CBOR_UART_Communicator:
 if __name__ == "__main__":
     comm = CBOR_UART_Communicator('/dev/ttyACM0', 38400)
     
-    value = 450
-    factor = 20
+    value = 90
+    factor = 90
 
-    comm.send_config({
-        "position_steps": 6
-    })
-    time.sleep(3)
+    # comm.send_config({
+    #     "position_steps": 6
+    # })
+    # time.sleep(3)
 
-    while True:  
-        value = value  + factor
-        # Send a dictionary
+    while True:   
+        value = 0
         comm.send_position({ 
             "position_c0": value, 
-            "position_c1": value+1, 
-            "position_c2": value+2, 
-            "position_c3": value+3, 
-            "position_c4": value+4, 
-            "position_c5": value+5, 
-            "position_c6": value+6, 
-            "position_c7": value+7, 
-            "position_c8": value+8, 
-            "position_c9": value+9, 
-            "position_c10": value+10, 
-            "position_c11": value+11, 
+            "position_c1": value, 
+            "position_c2": value, 
+            "position_c3": value, 
+            "position_c4": value, 
+            "position_c5": value, 
+            "position_c6": value, 
+            "position_c7": value, 
+            "position_c8": value, 
+            "position_c9": value, 
+            "position_c10": value, 
+            "position_c11": value, 
         }) 
 
-        if (value > 450):
-            factor = -1*factor
-        if (value < 350):
-            factor = -1*factor
         print(f"Sent value: {value}")
-        time.sleep(0.2)
+        time.sleep(0.35) 
+
+        value = 180
+        comm.send_position({ 
+            "position_c0": value, 
+            "position_c1": value, 
+            "position_c2": value, 
+            "position_c3": value, 
+            "position_c4": value, 
+            "position_c5": value, 
+            "position_c6": value, 
+            "position_c7": value, 
+            "position_c8": value, 
+            "position_c9": value, 
+            "position_c10": value, 
+            "position_c11": value, 
+        }) 
+
+        print(f"Sent value: {value}")
+        time.sleep(0.35) 
+
+
+        value = 90
+        comm.send_position({ 
+            "position_c0": value, 
+            "position_c1": value, 
+            "position_c2": value, 
+            "position_c3": value, 
+            "position_c4": value, 
+            "position_c5": value, 
+            "position_c6": value, 
+            "position_c7": value, 
+            "position_c8": value, 
+            "position_c9": value, 
+            "position_c10": value, 
+            "position_c11": value, 
+        }) 
+
+        print(f"Sent value: {value}")
+        time.sleep(0.35) 
