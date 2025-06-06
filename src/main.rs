@@ -19,6 +19,7 @@ use drivers::uart_driver::uart_reader_driver;
 
 mod utils;
 use utils::config::configuration_handler;
+use utils::servo::position_handler;
 
 mod common;
 use common::contracts::{Config, ServoSetup};
@@ -36,6 +37,7 @@ static SERVO_SETUP_CHANNEL: PubSubChannel<ThreadModeRawMutex, ServoSetup, 10, 1,
 static CONFIG_CHANNEL: PubSubChannel<ThreadModeRawMutex, Config, 10, 1, 1> = PubSubChannel::new();
 
 static CONFIG: Mutex<ThreadModeRawMutex, Config> = Mutex::new(Config::default());
+static TARGET: Mutex<ThreadModeRawMutex, [f32; 12]> = Mutex::new([0.0; 12]);
 
 #[embassy_executor::main]
 async fn main(spawner: Spawner) {
@@ -67,8 +69,9 @@ async fn main(spawner: Spawner) {
     let _ = spawner
         .spawn(uart_reader_driver(servo_publisher, config_publisher, rx))
         .unwrap();
-    let _ = spawner.spawn(servo_driver(servo_subscriber, pwm, &CONFIG));
+    let _ = spawner.spawn(servo_driver(pwm, &CONFIG, &TARGET));
     let _ = spawner.spawn(configuration_handler(config_subscriber, &CONFIG));
+    let _ = spawner.spawn(position_handler(servo_subscriber, &TARGET));
 
     loop {
         Timer::after_millis(100).await;
